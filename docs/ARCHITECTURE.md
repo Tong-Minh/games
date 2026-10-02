@@ -12,7 +12,7 @@ A web platform where players create public or private lobbies and play games fro
 |---|---|---|
 | Monorepo | pnpm workspaces + Turborepo | Dev-only tooling; no runtime cost. |
 | Web app | Next.js (App Router, TypeScript), Tailwind, deployed to Vercel | Mostly static/ISR pages. Data is read client-side from Supabase under RLS, so serverless invocations stay rare. Server routes only where a secret is needed (auth callback, account deletion, later Stripe). Vercel Hobby is non-commercial; move to Pro before monetizing. |
-| Game server | Colyseus (Node/TypeScript) on one Fly.io machine (shared-cpu-1x, 512 MB) | Vercel can't hold long-lived WebSockets. `auto_stop`/`auto_start` scales to zero when nobody is connected. No Redis until a second instance is needed. |
+| Game server | Colyseus 0.18 (`@colyseus/core` + `@colyseus/ws-transport`, not the all-in-one `colyseus` package, which pulls in auth, monitor, playground and Redis) on one Fly.io machine (shared-cpu-1x, 512 MB) | Vercel can't hold long-lived WebSockets. `auto_stop`/`auto_start` scales to zero when nobody is connected. No Redis until a second instance is needed. |
 | Auth + DB | Supabase (Auth, Postgres, RLS) | Free tier. One DB write per finished match; nothing during gameplay. |
 | Payments | Stripe Checkout + webhooks (later phase) | Webhooks are the only writer of purchases. |
 | Game clients | React (card, board, party games) or Phaser 4 (real-time/canvas), lazy-loaded | Phaser only downloads when a Phaser game is opened. |
@@ -56,42 +56,46 @@ Game packages are consumed as TypeScript source: `transpilePackages` in Next.js,
 Games don't subclass a Colyseus Room. They export a definition object, and the platform's single `GameRoom` runs it. That keeps lobby, chat, host and reconnection logic out of reach of game code. It also means game logic can be unit-tested without sockets.
 
 ```ts
-// manifest.ts
+// src/manifest.ts: pure data, safe to import anywhere
 export default defineManifest({
   id: 'liars-dice',
   name: "Liar's Dice",
   description: 'Bluff about the dice under your cup.',
-  thumbnail: './thumb.png',
-  version: 1,                          // bump on any protocol/state change
+  version: 1,                          // bump on any state or message change
   minPlayers: 2,
   maxPlayers: 6,
   tier: 'free',                        // default only; the products table overrides
   features: [
-    { id: 'wild-ones', scope: 'lobby' },   // applies to the whole lobby
-    { id: 'gold-dice', scope: 'player' },  // per player (cosmetic)
+    { id: 'wild-ones', name: 'Wild ones', scope: 'lobby' },  // applies to the whole lobby
+    { id: 'gold-dice', name: 'Gold dice', scope: 'player' }, // per player (cosmetic)
   ],
-  settings: z.object({ startingDice: z.number().min(3).max(6).default(5) }),
-  realtime: false,                     // true → fixed tick; false → event-driven
+  settings: z.object({ startingDice: z.number().int().min(3).max(6).default(5) }),
+  realtime: false,                     // true: tick() runs at tickRate (default 20/s)
 });
 
-// server.ts
-export default defineGame({
-  State: LiarsDiceState,               // Colyseus Schema; @view() for hidden fields
-  setup(ctx) {},                       // ctx: state, players, settings, features, rng, clock
+// src/server.ts
+const Hand = schema({ count: t.uint8(), dice: t.array('uint8').view() }, 'Hand');
+const State = schema({ hands: t.map(Hand), turn: t.string() }, 'LiarsDiceState');
+
+export default defineGame(manifest, {
+  State,                               // created fresh for every match
+  setup(ctx) {},                       // ctx: state, players, settings, hasFeature, random, reveal, timers…
   messages: {
     bid: {
       schema: z.object({ count: z.number().int(), face: z.number().int().min(1).max(6) }),
-      handle(ctx, player, msg) {},
+      handle(ctx, playerId, bid) {},   // `bid` is typed from the schema; invalid payloads never get here
     },
   },
-  tick: undefined,                     // (ctx, dtMs) => void, only when realtime
-  onPlayerLeave(ctx, player) {},       // forfeit / skip rule; reconnection is handled by the platform
-  isOver(ctx) { return null },         // Results | null, checked after every message and tick
+  tick: undefined,                     // (ctx, dtMs) => void, required when realtime
+  onPlayerLeave(ctx, playerId) {},     // left for good; reconnection is handled by the platform
+  isOver(ctx) { return null },         // GameResults | null, checked after every message, tick and timer
 });
 
-// client.tsx: rendered inside the platform's game shell
-export default function Game({ state, me, players, send, settings, features }: GameProps<LiarsDiceState>) {}
+// src/client.tsx (Phase 4): rendered inside the platform's game shell
+export default function Game({ state, me, players, send, settings }: GameProps<…>) {}
 ```
+
+State uses Colyseus's declarative `schema({...})` with `t.*` field builders, so games need no TypeScript decorators. Fields marked `.view()` are hidden until the game calls `ctx.reveal(playerId, obj)` (or `ctx.revealToAll(obj)`). The platform re-applies reveals when a player reconnects.
 
 **The platform `GameRoom` owns:**
 - Lobby phase, chat, ready-up and host controls (kick, change settings, start).
@@ -100,9 +104,9 @@ export default function Game({ state, me, players, send, settings, features }: G
 - Entitlement checks.
 - The results screen, and writing results with `record_match`.
 
-**Testing:** game logic is tested by calling `setup`, the handlers and `isOver` directly on a state object. Each game also gets one smoke test through `@colyseus/testing`.
+**Testing:** `createTestContext(game, { players, settings, seed })` from `@games/game-sdk/testing` runs a game's logic with no server. It can dispatch messages through schema validation, advance timers, tick, simulate a player leaving, and inspect reveals. `GameRoom` itself is covered by socket-level tests in `packages/game-sdk/test`.
 
-**Escape hatch:** an optional `hooks` field exposes raw room lifecycle callbacks for unusual games. Use it sparingly. If several games need the same hook, promote it into the SDK.
+**Escape hatch (not built yet):** if a game needs raw room lifecycle access, add an optional `hooks` field to `defineGame` then. If several games need the same hook, make it a first-class SDK feature instead.
 
 **Phaser games** render `<PhaserCanvas scenes={...} />` from the SDK inside their client component. It creates and destroys the Phaser instance with the component, and passes room state and `send` into the scene.
 
@@ -123,7 +127,7 @@ export default function Game({ state, me, players, send, settings, features }: G
 - **Room lifetime:**
   - Empty rooms are disposed immediately.
   - A lobby that never starts is disposed after 15 minutes idle.
-  - Each process has a hard cap on rooms.
+  - *Planned:* a per-process room cap. Not built yet, because the idle timeout and per-identity matchmaking limits come first.
 - **Version check:** room metadata carries the game's manifest `version`. A client with a mismatched version is told to reload.
 
 ## 5. Accounts and guests
@@ -133,7 +137,9 @@ export default function Game({ state, me, players, send, settings, features }: G
 ### Sign-in
 - Google OAuth.
 - Email + password, with email confirmation and password reset.
-- Both are Supabase Auth. The web app uses `@supabase/ssr` cookies, and the game server verifies Supabase JWTs locally with `jose` against the project's JWKS. Keys are cached, so there is no network call per join.
+- Both are Supabase Auth. The web app uses `@supabase/ssr` cookies.
+- **Game server:** it verifies Supabase access tokens (ES256) locally with `jose` against the project's JWKS. It then loads the player's `profiles` row (cached for 60 seconds), which is the source of truth for the display name and also catches deleted accounts.
+- **Order of checks:** authentication runs in the room's static `onAuth`, during matchmaking, *before* a room is created or a seat reserved. Unauthenticated requests therefore can't create rooms. Room-specific checks (bans, duplicate tabs, join codes, ownership) run in `onJoin`.
 
 ### Account deletion
 Profile → Danger zone, behind a typed confirmation.
@@ -141,11 +147,11 @@ Profile → Danger zone, behind a typed confirmation.
 2. `profiles` and `leaderboard_stats` rows are deleted by cascade.
 3. A trigger anonymizes the user's entries in `game_results.players` to `{ userId: null, name: "Deleted player" }`, so other players' match history stays intact.
 4. (Stripe phase) `purchases.user_id` is set to null rather than deleted, because those records are needed for accounting.
-5. If the user is connected to a room, the game server drops the session.
+5. The game server rejects the deleted account's token on its next join, because the profile is gone, even if the token hasn't expired. A session already inside a room keeps playing until it leaves.
 
 ### Guests: ephemeral, no stats saved
 - Guests pick a nickname and play free games, and host-owned paid games where config allows (§6).
-- The game server issues a short-lived signed guest token. Guests create no `auth.users` row and cause no database writes.
+- `POST /auth/guest { name }` returns a 24-hour guest token (HS256, signed by the game server, rate-limited per IP). Guests create no `auth.users` row and cause no database writes. A match with no registered players isn't stored at all.
 - Results show on the end screen but aren't stored. The results screen offers "Sign up to keep your stats".
 - *Considered and rejected for now:* Supabase anonymous sign-in. It would let guest history carry over on sign-up, but it creates a database row and needs a cleanup job for every visitor.
 
@@ -223,10 +229,11 @@ Every table has RLS enabled. Only the game server (service role) writes match re
 - **Hidden information** uses Colyseus `StateView` / `@view()`. Fields such as another player's dice are never sent to clients who shouldn't see them.
 - **Real-time games** send inputs, not positions. The server clamps speed and validates movement.
 - **Rate limiting:**
-  - Game server, per client: a token bucket (roughly 30 messages/second for real-time games, 5/second for turn-based) and a 4 KB maximum message size.
-  - Game server, per IP or user: connection caps, room-creation caps and join-by-code throttling.
+  - Game server, per client: Colyseus `maxMessagesPerSecond` (40 for real-time games, 10 for turn-based; going over disconnects the client), a 4 KB maximum message size at the WebSocket layer, and a chat throttle (one message per 400 ms).
+  - Game server, per IP: join-by-code lookups (20/minute) and guest-token issuing (10/minute).
+  - *Planned:* per-IP connection caps and per-user room-creation caps.
   - Web: Vercel's built-in protection for now. Add Upstash rate limiting only if abuse appears.
-- **Chat:** length limits, a basic profanity filter, and host mute and kick. Player reports come later.
+- **Chat:** 200-character limit; control and bidirectional-override characters are stripped; host kick. *Planned:* a profanity filter, host mute and player reports.
 - **Secrets:** the Supabase service-role key is only on the game server and in Next.js server routes, never in client bundles.
 
 ## 9. Runtime footprint
@@ -252,16 +259,19 @@ Every table has RLS enabled. Only the game server (service role) writes match re
 ## 11. Local development
 
 ```sh
-corepack enable          # provides pnpm
+corepack enable pnpm     # provides pnpm (on Windows without admin rights:
+                         #   corepack enable pnpm --install-directory "%APPDATA%\npm")
 pnpm install
-pnpm db:start            # supabase start (needs Docker)
-pnpm dev                 # web on :3000, game server on :2567, both hot-reloading
+pnpm db:start            # local Supabase in Docker (realtime, storage and edge functions excluded)
+cp apps/game-server/.env.example apps/game-server/.env   # then fill in the keys
+pnpm dev                 # game server on :2567 with hot reload (web app on :3000 from Phase 4)
 ```
 
-- Each app has a `.env.example`.
-- `packages/db/supabase/seed.sql` creates test users, products and one paid feature.
-- The Colyseus monitor is available at `http://localhost:2567/monitor` in development only.
-- Email/password sign-in works locally out of the box (Supabase's local mail catcher receives confirmation mail). Google sign-in needs an OAuth client from Google Cloud, configured in Supabase Auth settings.
+- `npx supabase status` (in `packages/db`) prints the local keys for `.env`.
+- `pnpm test` runs every package's tests. The game server's integration tests use the local Supabase stack and are skipped when it isn't running.
+- `pnpm db:test` runs the pgTAP schema tests, and `pnpm db:stop` frees Docker memory when you're done.
+- **Adding a game:** `pnpm new-game <id> ["Name"]`. **Removing one:** delete its folder, then run `npx tsx scripts/gen-registry.ts && pnpm install`. pnpm refuses to run package scripts while an app still depends on the deleted package.
+- Email/password sign-in works locally out of the box, and Supabase's local mail catcher (http://127.0.0.1:54324) receives confirmation mail. Google sign-in needs an OAuth client from Google Cloud, configured in Supabase Auth settings.
 
 ## 12. Roadmap
 

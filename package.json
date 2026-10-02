@@ -8,13 +8,24 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "typecheck": "turbo run typecheck",
+    "typecheck": "turbo run typecheck && tsc -p scripts",
     "test": "turbo run test",
     "lint": "biome check .",
-    "format": "biome check --write ."
+    "format": "biome check --write .",
+    "predev": "pnpm gen:registry",
+    "prebuild": "pnpm gen:registry",
+    "gen:registry": "tsx scripts/gen-registry.ts",
+    "new-game": "tsx scripts/new-game.ts",
+    "db:start": "pnpm --filter @games/db db:start",
+    "db:stop": "pnpm --filter @games/db db:stop",
+    "db:reset": "pnpm --filter @games/db db:reset",
+    "db:test": "pnpm --filter @games/db db:test",
+    "db:types": "pnpm --filter @games/db db:types"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
+    "@types/node": "^24.19.0",
+    "tsx": "^4.23.15",
     "turbo": "^2.11.7",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"

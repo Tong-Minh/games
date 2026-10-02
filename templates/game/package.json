@@ -1,0 +1,19 @@
+{
+  "name": "@games/game-__GAME_ID__",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./manifest": "./src/manifest.ts",
+    "./server": "./src/server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@colyseus/schema": "__SCHEMA_VERSION__",
+    "@games/game-sdk": "workspace:*",
+    "zod": "__ZOD_VERSION__"
+  }
+}
