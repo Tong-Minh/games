@@ -15,7 +15,7 @@ A web platform where players create public or private lobbies and play games fro
 | Game server | Colyseus (Node/TypeScript) on one Fly.io machine (shared-cpu-1x, 512 MB) | Vercel can't hold long-lived WebSockets. `auto_stop`/`auto_start` scales to zero when nobody is connected. No Redis until a second instance is needed. |
 | Auth + DB | Supabase (Auth, Postgres, RLS) | Free tier. One DB write per finished match; nothing during gameplay. |
 | Payments | Stripe Checkout + webhooks (later phase) | Webhooks are the only writer of purchases. |
-| Game clients | React (card, board, party games) or Phaser 3 (real-time/canvas), lazy-loaded | Phaser only downloads when a Phaser game is opened. |
+| Game clients | React (card, board, party games) or Phaser 4 (real-time/canvas), lazy-loaded | Phaser only downloads when a Phaser game is opened. |
 
 Library versions are pinned to the latest stable release at scaffold time.
 
