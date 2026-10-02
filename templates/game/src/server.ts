@@ -1,11 +1,7 @@
-import { schema, t } from '@colyseus/schema';
 import { defineGame } from '@games/game-sdk';
 import { z } from 'zod';
 import manifest from './manifest';
-
-// Synced state. Mark fields `.view()` and use `ctx.reveal()` for hidden information.
-const Player = schema({ score: t.uint16().default(0) }, '__GAME_STATE__Player');
-const State = schema({ players: t.map(Player) }, '__GAME_STATE__State');
+import { Player, State } from './state';
 
 // Placeholder gameplay: first to `target` points wins. Replace with the real game.
 export default defineGame(manifest, {

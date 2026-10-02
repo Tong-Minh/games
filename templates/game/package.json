@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     "./manifest": "./src/manifest.ts",
-    "./server": "./src/server.ts"
+    "./server": "./src/server.ts",
+    "./client": "./src/client.tsx"
   },
   "scripts": {
     "typecheck": "tsc",
@@ -15,5 +16,11 @@
     "@colyseus/schema": "__SCHEMA_VERSION__",
     "@games/game-sdk": "workspace:*",
     "zod": "__ZOD_VERSION__"
+  },
+  "peerDependencies": {
+    "react": "__REACT_VERSION__"
+  },
+  "devDependencies": {
+    "@types/react": "__REACT_TYPES_VERSION__"
   }
 }

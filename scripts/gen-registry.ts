@@ -32,6 +32,25 @@ const targets: Target[] = [
       games.map((g, i) => `import game${i} from '${g.packageName}/server';\n`).join('') +
       `\nexport const games: readonly AnyGameDefinition[] = [${games.map((_, i) => `game${i}`).join(', ')}];\n`,
   },
+  {
+    // Manifests are plain data: safe for server components and static pages.
+    app: 'apps/web',
+    file: 'src/games.gen.ts',
+    render: (games) =>
+      `${header}import type { GameManifest } from '@games/game-sdk';\n` +
+      games.map((g, i) => `import manifest${i} from '${g.packageName}/manifest';\n`).join('') +
+      `\nexport const manifests: readonly GameManifest[] = [${games.map((_, i) => `manifest${i}`).join(', ')}];\n`,
+  },
+  {
+    // Game UIs are only loaded on the client, and only when that game is opened.
+    app: 'apps/web',
+    file: 'src/game-clients.gen.ts',
+    render: (games) =>
+      `${header}import type { GameComponent } from '@games/game-sdk/client';\n\n` +
+      'export const gameClients: Record<string, () => Promise<{ default: GameComponent }>> = {\n' +
+      games.map((g) => `  '${g.id}': () => import('${g.packageName}/client'),\n`).join('') +
+      '};\n',
+  },
 ];
 
 export function findGames(): GamePackage[] {

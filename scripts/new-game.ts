@@ -25,12 +25,15 @@ if (existsSync(target)) {
 
 const words = id.split('-').map((w) => w[0]!.toUpperCase() + w.slice(1));
 const sdkPkg = JSON.parse(readFileSync(join(root, 'packages/game-sdk/package.json'), 'utf8'));
+const webPkg = JSON.parse(readFileSync(join(root, 'apps/web/package.json'), 'utf8'));
 const replacements: Record<string, string> = {
   __GAME_ID__: id,
   __GAME_NAME__: displayName ?? words.join(' '),
   __GAME_STATE__: words.join(''),
   __SCHEMA_VERSION__: sdkPkg.dependencies['@colyseus/schema'],
   __ZOD_VERSION__: sdkPkg.dependencies.zod,
+  __REACT_VERSION__: webPkg.dependencies.react,
+  __REACT_TYPES_VERSION__: sdkPkg.devDependencies['@types/react'],
 };
 
 function copy(from: string, to: string) {
@@ -57,8 +60,10 @@ console.log(`
 Created packages/games/${id}
 
   src/manifest.ts   name, player counts, settings
-  src/server.ts     state, messages, win condition
+  src/state.ts      synced state (shared by server and client)
+  src/server.ts     messages, win condition
+  src/client.tsx    the game UI
   test/             unit tests (pnpm --filter @games/game-${id} test)
 
-It's already registered with the game server.
+It's already registered with the game server and the web app.
 `);

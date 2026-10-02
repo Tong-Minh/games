@@ -38,7 +38,8 @@ docs/                    this file
 - `pnpm new-game <id>` copies `templates/game` to `packages/games/<id>`, fills in the id and name, and regenerates the registry.
 - `scripts/gen-registry.ts` scans `packages/games/*` and writes:
   - `apps/game-server/src/games.gen.ts`: every game's server module.
-  - `apps/web/src/games.gen.ts`: every manifest, plus a `next/dynamic` import of every client module.
+  - `apps/web/src/games.gen.ts`: every manifest (plain data, used by static pages).
+  - `apps/web/src/game-clients.gen.ts`: a lazy loader for every game's UI. A game's UI is only downloaded when someone opens that game.
 - The registry is regenerated on `predev` and `prebuild`. Generated files are committed so builds are reproducible.
 
 ### Three entry points per game
@@ -46,7 +47,8 @@ docs/                    this file
 | File | Imported by | Contents |
 |---|---|---|
 | `manifest.ts` | everything | Pure data. Safe to import anywhere, including the catalog. |
-| `server.ts` | game server only | `defineGame({...})`: state schema, setup, message handlers, end condition. |
+| `state.ts` | server and client | The synced state schema (the client imports it for types only). |
+| `server.ts` | game server only | `defineGame(manifest, {...})`: setup, message handlers, end condition. |
 | `client.tsx` | web app only, lazy | The game's UI component. |
 
 Game packages are consumed as TypeScript source: `transpilePackages` in Next.js, `tsx` on the game server. There is no per-game build step.
@@ -137,13 +139,15 @@ State uses Colyseus's declarative `schema({...})` with `t.*` field builders, so 
 ### Sign-in
 - Google OAuth.
 - Email + password, with email confirmation and password reset.
-- Both are Supabase Auth. The web app uses `@supabase/ssr` cookies.
+- Both are Supabase Auth, handled in the browser with `@supabase/ssr`'s browser client (session in cookies).
+  - `/auth/callback` is a static client page. The browser client completes Google, email-confirmation and password-reset links (`?code=`) on its own, so sign-in needs no server route.
+  - There is no Next.js `proxy` (formerly middleware). Pages read data in the browser under RLS, so nothing on the server needs the session, and no function runs on every request.
 - **Game server:** it verifies Supabase access tokens (ES256) locally with `jose` against the project's JWKS. It then loads the player's `profiles` row (cached for 60 seconds), which is the source of truth for the display name and also catches deleted accounts.
 - **Order of checks:** authentication runs in the room's static `onAuth`, during matchmaking, *before* a room is created or a seat reserved. Unauthenticated requests therefore can't create rooms. Room-specific checks (bans, duplicate tabs, join codes, ownership) run in `onJoin`.
 
 ### Account deletion
 Profile → Danger zone, behind a typed confirmation.
-1. A Next.js server route verifies the session and calls `auth.admin.deleteUser` with the service role. The service-role key only exists server-side.
+1. `DELETE /api/account` (the web app's only server route) takes the access token in the `Authorization` header (not a cookie, so other sites can't trigger it). It verifies the token, revokes all sessions, and calls `auth.admin.deleteUser` with the secret key, which only exists server-side.
 2. `profiles` and `leaderboard_stats` rows are deleted by cascade.
 3. A trigger anonymizes the user's entries in `game_results.players` to `{ userId: null, name: "Deleted player" }`, so other players' match history stays intact.
 4. (Stripe phase) `purchases.user_id` is set to null rather than deleted, because those records are needed for accounting.
@@ -264,13 +268,15 @@ corepack enable pnpm     # provides pnpm (on Windows without admin rights:
 pnpm install
 pnpm db:start            # local Supabase in Docker (realtime, storage and edge functions excluded)
 cp apps/game-server/.env.example apps/game-server/.env   # then fill in the keys
-pnpm dev                 # game server on :2567 with hot reload (web app on :3000 from Phase 4)
+cp apps/web/.env.example apps/web/.env.local             # same keys
+pnpm dev                 # web on :3000, game server on :2567, both hot-reloading
 ```
 
 - `npx supabase status` (in `packages/db`) prints the local keys for `.env`.
 - `pnpm test` runs every package's tests. The game server's integration tests use the local Supabase stack and are skipped when it isn't running.
 - `pnpm db:test` runs the pgTAP schema tests, and `pnpm db:stop` frees Docker memory when you're done.
 - **Adding a game:** `pnpm new-game <id> ["Name"]`. **Removing one:** delete its folder, then run `npx tsx scripts/gen-registry.ts && pnpm install`. pnpm refuses to run package scripts while an app still depends on the deleted package.
+- To play against yourself, open a second window at `http://127.0.0.1:3000`. It's a different origin from `localhost`, so it gets its own sign-in and guest identity (allowed in dev via `allowedDevOrigins`).
 - Email/password sign-in works locally out of the box, and Supabase's local mail catcher (http://127.0.0.1:54324) receives confirmation mail. Google sign-in needs an OAuth client from Google Cloud, configured in Supabase Auth settings.
 
 ## 12. Roadmap
