@@ -10,3 +10,27 @@
 body {
   @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
 }
+
+/*
+ * Mobile: stop double-tap-to-zoom on anything tappable (rapid taps on game cards were zooming
+ * the page). Pinch-to-zoom still works.
+ */
+a,
+button,
+input,
+label,
+select,
+summary,
+textarea,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+/* iOS zooms into any text field under 16px when it's focused. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
