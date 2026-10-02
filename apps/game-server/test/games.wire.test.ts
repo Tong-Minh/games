@@ -78,3 +78,33 @@ describe.skipIf(!liarsDice)("Liar's Dice over the wire", () => {
     expect(ann.state.game.hands.get(ann.sessionId).dice?.length).toBeGreaterThan(0);
   }, 15_000);
 });
+
+const whoDat = games.find((g) => g.manifest.id === 'who-dat');
+
+describe.skipIf(!whoDat)('Who Dat? over the wire', () => {
+  it("hides each player's animal from the other until the reveal", async () => {
+    colyseus.sdk.auth.token = 'guest:Cy';
+    const cy = await colyseus.sdk.create('who-dat', {});
+    await cy.waitForInitialState();
+    colyseus.sdk.auth.token = 'guest:Di';
+    const di = await colyseus.sdk.joinById(cy.roomId, {});
+    await di.waitForInitialState();
+    di.send(LobbyMessage.Ready, { ready: true });
+    await settle();
+    cy.send(LobbyMessage.Start);
+    await settle(200);
+
+    const cySees = cy.state.game.sides;
+    expect(cySees.get(cy.sessionId).secret).toBeTruthy();
+    expect(cySees.get(di.sessionId).secret ?? '').toBe('');
+    expect(di.state.game.sides.get(cy.sessionId).secret ?? '').toBe('');
+
+    // Whoever's turn it is guesses; either way the game ends and both animals are revealed.
+    const [asker, other] = cy.state.game.turn === cy.sessionId ? [cy, di] : [di, cy];
+    asker.send('guess', { animal: asker.state.game.board[0] });
+    await settle(200);
+    expect(cy.state.game.stage).toBe('reveal');
+    expect(asker.state.game.sides.get(other.sessionId).secret).toBeTruthy();
+    expect(other.state.game.sides.get(asker.sessionId).secret).toBeTruthy();
+  });
+});

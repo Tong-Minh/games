@@ -14,6 +14,7 @@
     "@games/db": "workspace:*",
     "@games/game-liars-dice": "workspace:*",
     "@games/game-sdk": "workspace:*",
+    "@games/game-who-dat": "workspace:*",
     "@games/shared": "workspace:*",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",

@@ -3,4 +3,5 @@ import type { GameComponent } from '@games/game-sdk/client';
 
 export const gameClients: Record<string, () => Promise<{ default: GameComponent }>> = {
   'liars-dice': () => import('@games/game-liars-dice/client'),
+  'who-dat': () => import('@games/game-who-dat/client'),
 };

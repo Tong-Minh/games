@@ -19,6 +19,7 @@
     "@colyseus/ws-transport": "^0.18.4",
     "@games/game-liars-dice": "workspace:*",
     "@games/game-sdk": "workspace:*",
+    "@games/game-who-dat": "workspace:*",
     "@games/shared": "workspace:*",
     "jose": "^6.2.12",
     "tsx": "^4.23.15",

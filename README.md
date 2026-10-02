@@ -46,4 +46,9 @@ The game is registered with the server automatically, with no platform code to e
 | `packages/db` | Supabase migrations, pgTAP tests, generated types |
 | `templates/game` | Template used by `pnpm new-game` |
 
-> Status: Phase 5 of 6. Liar's Dice is playable; the Phaser sample (Bumper Arena) comes next.
+> Status: live at https://games.minhtong.com with Liar's Dice and Who Dat?.
+
+## Deploying
+
+- **Web app:** every push to `main` deploys to Vercel automatically.
+- **Game server:** run `fly deploy --ha=false` from the repo root after changing the server, the SDK or any game. Games run on the server too, so a new or changed game needs both deploys: the push and `fly deploy`.

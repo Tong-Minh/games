@@ -15,7 +15,7 @@ A web platform where players create public or private lobbies and play games fro
 | Game server | Colyseus 0.18 (`@colyseus/core` + `@colyseus/ws-transport`, not the all-in-one `colyseus` package, which pulls in auth, monitor, playground and Redis) on one Fly.io machine (shared-cpu-1x, 512 MB) | Vercel can't hold long-lived WebSockets. `auto_stop`/`auto_start` scales to zero when nobody is connected. No Redis until a second instance is needed. |
 | Auth + DB | Supabase (Auth, Postgres, RLS) | Free tier. One DB write per finished match; nothing during gameplay. |
 | Payments | Stripe Checkout + webhooks (later phase) | Webhooks are the only writer of purchases. |
-| Game clients | React (card, board, party games) or Phaser 4 (real-time/canvas), lazy-loaded | Phaser only downloads when a Phaser game is opened. |
+| Game clients | React, lazy-loaded (a canvas engine such as Phaser can be added for real-time games later) | A game's UI only downloads when that game is opened. |
 
 Library versions are pinned to the latest stable release at scaffold time.
 
@@ -24,7 +24,7 @@ Library versions are pinned to the latest stable release at scaffold time.
 ```
 apps/web                 Next.js app: catalog, profiles, leaderboards, lobby browser, game shell
 apps/game-server         Colyseus server; imports the generated games registry
-packages/game-sdk        defineManifest(), defineGame(), platform GameRoom, client shell types, PhaserCanvas
+packages/game-sdk        defineManifest(), defineGame(), platform GameRoom, client shell types, test helpers
 packages/games/<id>      manifest.ts | server.ts | client.tsx | test/
 packages/shared          entitlement logic (pure function), zod config schemas, shared types
 packages/db              supabase/ (migrations, seed), generated types, query helpers
@@ -114,7 +114,7 @@ State uses Colyseus's declarative `schema({...})` with `t.*` field builders, so 
 
 **Escape hatch (not built yet):** if a game needs raw room lifecycle access, add an optional `hooks` field to `defineGame` then. If several games need the same hook, make it a first-class SDK feature instead.
 
-**Phaser games** render `<PhaserCanvas scenes={...} />` from the SDK inside their client component. It creates and destroys the Phaser instance with the component, and passes room state and `send` into the scene.
+**Real-time games** are supported by the SDK (`realtime: true` plus `tick`) but none exist yet. A canvas helper (e.g. for Phaser) would be added to the SDK alongside the first one.
 
 ## 4. Lobbies
 
@@ -295,5 +295,6 @@ Each phase ends with a review and one commit.
 | 3 | Game SDK and game server: `GameRoom`, auth and guest tokens, lobbies, join codes, `/lobbies`, registry codegen, `pnpm new-game` |
 | 4 | Web: optional auth (Google, email/password), account deletion, catalog, lobby browser, create/join, lobby UI, game shell, results, leaderboards, profiles |
 | 5 | Sample game: Liar's Dice (React, turn-based, hidden information) |
-| 6 | Sample game: Bumper Arena (Phaser, real-time) |
-| Later | Stripe, admin UI, Redis scaling, Sentry |
+| 6 | Game: Who Dat? (two players, free-text yes/no questions, emoji animals) |
+| ✓ | Deployed: web on Vercel (games.minhtong.com), game server on Fly.io (tongminh-server), Supabase hosted |
+| Later | Stripe, admin UI, Redis scaling, Sentry, a real-time game |
