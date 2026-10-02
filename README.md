@@ -46,4 +46,4 @@ The game is registered with the server automatically, with no platform code to e
 | `packages/db` | Supabase migrations, pgTAP tests, generated types |
 | `templates/game` | Template used by `pnpm new-game` |
 
-> Status: Phase 4 of 6. The platform (web app, game server, SDK) works end to end; the first real games come next.
+> Status: Phase 5 of 6. Liar's Dice is playable; the Phaser sample (Bumper Arena) comes next.

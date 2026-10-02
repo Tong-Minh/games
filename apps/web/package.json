@@ -12,6 +12,7 @@
   "dependencies": {
     "@colyseus/sdk": "^0.18.4",
     "@games/db": "workspace:*",
+    "@games/game-liars-dice": "workspace:*",
     "@games/game-sdk": "workspace:*",
     "@games/shared": "workspace:*",
     "@supabase/ssr": "^0.12.7",

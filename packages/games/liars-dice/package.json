@@ -1,0 +1,26 @@
+{
+  "name": "@games/game-liars-dice",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./manifest": "./src/manifest.ts",
+    "./server": "./src/server.ts",
+    "./client": "./src/client.tsx"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@colyseus/schema": "^5.0.35",
+    "@games/game-sdk": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0"
+  }
+}

@@ -99,6 +99,10 @@ export default function Game({ state, me, players, send, settings }: GameProps<â
 
 State uses Colyseus's declarative `schema({...})` with `t.*` field builders, so games need no TypeScript decorators. Fields marked `.view()` are hidden until the game calls `ctx.reveal(playerId, obj)` (or `ctx.revealToAll(obj)`). The platform re-applies reveals when a player reconnects.
 
+**Gotchas for game authors:**
+- Give every number and boolean field a `.default()`. Otherwise it starts as `undefined`, and arithmetic like `round + 1` silently produces `NaN`.
+- To hide information again after a showdown, replace the revealed object with a fresh one (Liar's Dice creates new cups each round) rather than trying to un-reveal it.
+
 **The platform `GameRoom` owns:**
 - Lobby phase, chat, ready-up and host controls (kick, change settings, start).
 - Host migration and reconnection (30-second window).

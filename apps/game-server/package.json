@@ -18,6 +18,7 @@
     "@colyseus/core": "^0.18.18",
     "@colyseus/schema": "^5.0.35",
     "@colyseus/ws-transport": "^0.18.4",
+    "@games/game-liars-dice": "workspace:*",
     "@games/game-sdk": "workspace:*",
     "@games/shared": "workspace:*",
     "jose": "^6.2.12",
