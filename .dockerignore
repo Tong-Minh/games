@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/.env
+**/.env.*
+.git
+.claude
+.vercel
+apps/web
+packages/db/supabase/.branches
+packages/db/supabase/.temp

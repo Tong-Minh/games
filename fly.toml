@@ -1,0 +1,39 @@
+# Fly.io config for the game server. Deploy from the repo root: `fly deploy`.
+# `app` is set by `fly launch`; rename it there if this name is taken.
+app = "game-night-server"
+primary_region = "iad"
+
+[build]
+  dockerfile = "apps/game-server/Dockerfile"
+
+[env]
+  PORT = "2567"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 2567
+  force_https = true
+  # Scale to zero when nobody is connected; open WebSockets keep the machine awake.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 500
+    hard_limit = 800
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+# Give running matches time to finish when a deploy replaces the machine.
+kill_signal = "SIGTERM"
+kill_timeout = 120
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
