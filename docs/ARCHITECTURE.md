@@ -161,7 +161,7 @@ The code paths, tables and tests exist, and tests run with the flag on. Turning 
 
 ### Rules
 - **SKUs:** `game:<gameId>` and `feature:<gameId>:<featureId>`.
-- **Access rule** (pure function in `packages/shared`, mirrored as SQL function `has_access(user_id, sku)`): a player can use a SKU if it is free, **or** they purchased it and it wasn't refunded, **or** they hold a manual grant, **or** their lifetime net spend is ≥ `app_settings.unlock_all_threshold_cents`.
+- **Access rule** (one pure function, `canAccess` in `packages/shared`, used by both the game server and the web app; the database only reports what a player owns, through `get_access(user_id)`): a player can use a SKU if it is free, **or** they purchased it and it wasn't refunded, **or** they hold a manual grant, **or** their lifetime net spend is ≥ `app_settings.unlock_all_threshold_cents`.
 - **Configuration is data, not code:**
   - `products(sku, price_cents, is_paid, active, lobby_access)` and `app_settings` are the source of truth.
   - Edit them in the Supabase dashboard for now; an admin UI comes later.
@@ -203,11 +203,15 @@ Every table has RLS enabled. Only the game server (service role) writes match re
 | `products(sku, price_cents, is_paid, active, lobby_access)` | Pricing and gating config | Public read; no client writes |
 | `app_settings(key, value jsonb)` | `monetization_enabled`, `unlock_all_threshold_cents`, `host_pass_public` | Public read; no client writes |
 | `entitlement_grants(user_id, sku, reason, created_at)` | Manual grants: comps, promos, testing | Owner reads own; no client writes |
-| `game_results(id, game_id, game_version, mode, started_at, ended_at, players jsonb)` | One row per finished match; `players` = `[{ userId \| null, name, rank, score, stats }]` | Readable by participants and on public profiles; service-role insert only |
-| `leaderboard_stats(game_id, user_id, games, wins, best_score, rating, updated_at)`, PK `(game_id, user_id)` | Per-game standings, updated in the same transaction as the result | Public read; service-role write only |
+| `game_results(id, game_id, game_version, mode, started_at, ended_at, players jsonb, player_ids uuid[])` | One row per finished match; `players` = `[{ userId \| null, name, rank, score, stats }]`; `player_ids` indexes the registered players | Public read (match history shows on public profiles); service-role insert only |
+| `leaderboard_stats(game_id, user_id, games, wins, best_score, updated_at)`, PK `(game_id, user_id)` | Per-game standings, updated in the same transaction as the result | Public read; service-role write only |
 | *Stripe phase:* `purchases`, `stripe_events`, `user_spend` view | | Owner reads own purchases |
 
-**`record_match(result jsonb)`** is a `SECURITY DEFINER` function executable only by `service_role`. It inserts the `game_results` row and upserts `leaderboard_stats` for registered players in one round trip. Leaderboards are a table maintained by this function rather than a materialized view, so there is no refresh job and reads stay cheap.
+**`record_match(result jsonb)`** and **`get_access(user_id)`** can only be executed by `service_role`. They run as the caller, and the service role bypasses RLS. `record_match` inserts the `game_results` row and upserts `leaderboard_stats` for registered players in one round trip. Leaderboards are a table maintained by this function rather than a materialized view, so there is no refresh job and reads stay cheap. A skill rating (such as Elo) can be added as a column later.
+
+**Privileges are explicit.** The migration revokes everything from `anon` and `authenticated`, then grants exactly what the policies use. That way, local stacks (old default: grant everything) and hosted projects (new default: grant nothing) behave the same. `packages/db/supabase/tests/schema.test.sql` (pgTAP, `pnpm --filter @games/db db:test`) checks these privileges and the sign-up, match-recording and account-deletion behaviour.
+
+**Migrations** live in `packages/db/supabase/migrations`, and every schema change goes through a migration file. The file version must match the version recorded on the hosted project.
 
 ## 8. Security and anti-cheat basics
 

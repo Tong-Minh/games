@@ -1,0 +1,2 @@
+-- Local development seed. Runs after migrations on `supabase db reset`.
+-- Game products are added alongside the sample games.

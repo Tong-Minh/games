@@ -1,0 +1,21 @@
+{
+  "name": "@games/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./types": "./src/database.gen.ts"
+  },
+  "scripts": {
+    "db:start": "supabase start -x realtime,storage-api,imgproxy,edge-runtime,logflare,vector,supavisor",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "db:types": "supabase gen types typescript --local > src/database.gen.ts",
+    "db:advisors": "supabase db advisors --local",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "supabase": "2.119.0"
+  }
+}
