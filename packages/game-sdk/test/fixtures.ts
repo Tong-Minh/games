@@ -4,7 +4,12 @@ import type { ColyseusTestServer } from '@colyseus/testing';
 import { type MonetizationConfig, monetizationSettingsSchema, type Product } from '@games/shared';
 import { z } from 'zod';
 import { defineGame, defineManifest } from '../src';
-import { createGameRoom, type MatchRecord, type PlatformServices } from '../src/server';
+import {
+  createGameRoom,
+  type MatchRecord,
+  type PlatformServices,
+  PlayerError,
+} from '../src/server';
 
 /** A tiny race: first player to 3 points wins. Each player also holds a hidden secret. */
 export const manifest = defineManifest({
@@ -75,7 +80,7 @@ export function fakeServices(): FakeServices {
     config: { settings: monetizationSettingsSchema.parse({}), products: new Map() },
     async authenticate(token) {
       const [kind, id, name] = (token ?? '').split(':');
-      if (!kind || !id || !name) throw new Error('Not authenticated');
+      if (!kind || !id || !name) throw new PlayerError('Not authenticated');
       return kind === 'user'
         ? { id, userId: id, name, avatarUrl: '' }
         : { id: `guest:${id}`, userId: null, name, avatarUrl: '' };

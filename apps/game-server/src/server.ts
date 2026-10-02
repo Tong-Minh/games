@@ -13,8 +13,10 @@ import {
   CODE_PATTERN,
   createGameRoom,
   type GameRoomOptions,
+  GENERIC_ERROR,
   normalizeCode,
   type PlatformServices,
+  PlayerError,
 } from '@games/game-sdk/server';
 import { z } from 'zod';
 import { clientIp, createRateLimiter } from './rateLimit';
@@ -132,7 +134,11 @@ export function createGameServer(options: GameServerOptions) {
         try {
           return await options.issueGuestToken(ctx.body.name);
         } catch (error) {
-          throw ctx.error('BAD_REQUEST', { message: (error as Error).message });
+          if (error instanceof PlayerError) {
+            throw ctx.error('BAD_REQUEST', { message: error.message });
+          }
+          options.services.log('error', 'Issuing guest token failed', { error: String(error) });
+          throw ctx.error('INTERNAL_SERVER_ERROR', { message: GENERIC_ERROR });
         }
       },
     ),

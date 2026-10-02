@@ -23,6 +23,7 @@ import {
   LobbyState,
   type MatchResults,
 } from '../lobby';
+import { PlayerError, shielded } from './errors';
 import type { Identity, PlatformServices } from './services';
 import { CODE_PATTERN, cleanText, createRandom, generateCode, normalizeCode } from './util';
 
@@ -74,6 +75,9 @@ export function createGameRoom(
     manifest.features.filter((f) => f.scope === 'lobby').map((f) => f.id),
   );
 
+  const logError = (message: string, data: Record<string, unknown>) =>
+    services.log('error', `${manifest.id}: ${message}`, data);
+
   const RoomState = LobbyState.extend({ game: t.ref(game.State) }, `${manifest.id}:State`);
   type RoomStateType = InstanceType<typeof LobbyState> & { game: Schema };
 
@@ -101,21 +105,26 @@ export function createGameRoom(
     private startedAt = 0;
 
     override async onCreate(rawOptions: unknown) {
-      const opts = createOptionsSchema.parse(rawOptions ?? {});
-      const settings = manifest.settings.parse(opts.settings);
+      const opts = createOptionsSchema.safeParse(rawOptions ?? {});
+      const settings = opts.success ? manifest.settings.safeParse(opts.data.settings) : null;
+      if (!opts.success || !settings?.success) throw new PlayerError('Invalid lobby settings');
+      await shielded(logError, 'onCreate', () => this.initialize(opts.data.private, settings.data));
+    }
+
+    private async initialize(isPrivate: boolean, settings: unknown) {
       this.config = await services.getMonetizationConfig();
 
       const state = new RoomState() as unknown as RoomStateType;
       state.gameId = manifest.id;
       state.gameVersion = manifest.version;
-      state.isPrivate = opts.private;
+      state.isPrivate = isPrivate;
       state.settings = JSON.stringify(settings);
       state.game = new game.State();
       state.code = await this.claimUniqueCode();
       this.state = state;
 
       if (manifest.realtime) this.patchRate = 1000 / manifest.tickRate;
-      await this.setMatchmaking({ private: opts.private, metadata: this.buildMetadata() });
+      await this.setMatchmaking({ private: isPrivate, metadata: this.buildMetadata() });
 
       this.registerLobbyMessages();
       this.registerGameMessages();
@@ -127,42 +136,44 @@ export function createGameRoom(
      * requests never create rooms. Room-specific checks happen in `onJoin`.
      */
     static override async onAuth(token: string, _options: unknown, _context: AuthContext) {
-      const identity = await services.authenticate(token);
-      const config = await services.getMonetizationConfig();
-      const access =
-        config.settings.monetizationEnabled && identity.userId
-          ? await services.getPlayerAccess(identity.userId)
-          : null;
-      return {
-        identity,
-        access: access && {
-          ownedSkus: [...access.ownedSkus],
-          lifetimeSpendCents: access.lifetimeSpendCents,
-        },
-      } satisfies AuthData;
+      return shielded(logError, 'onAuth', async () => {
+        const identity = await services.authenticate(token);
+        const config = await services.getMonetizationConfig();
+        const access =
+          config.settings.monetizationEnabled && identity.userId
+            ? await services.getPlayerAccess(identity.userId)
+            : null;
+        return {
+          identity,
+          access: access && {
+            ownedSkus: [...access.ownedSkus],
+            lifetimeSpendCents: access.lifetimeSpendCents,
+          },
+        } satisfies AuthData;
+      });
     }
 
     /** Throwing here rejects the join with the error's message. */
     private admit(identity: Identity, access: PlayerAccess | null, rawOptions: unknown) {
-      if (this.banned.has(identity.id)) throw new Error('You were removed from this lobby');
+      if (this.banned.has(identity.id)) throw new PlayerError('You were removed from this lobby');
       for (const existing of this.identities.values()) {
-        if (existing.id === identity.id) throw new Error('You are already in this lobby');
+        if (existing.id === identity.id) throw new PlayerError('You are already in this lobby');
       }
-      if (this.state.phase === 'playing') throw new Error('A match is in progress');
+      if (this.state.phase === 'playing') throw new PlayerError('A match is in progress');
 
       const isCreator = this.identities.size === 0 && this.state.hostId === '';
       if (isCreator) {
         if (!canCreateLobby(this.lobbyContext(access), this.config)) {
-          throw new Error('You need to own this game to host it');
+          throw new PlayerError('You need to own this game to host it');
         }
         return;
       }
       const { code } = joinOptionsSchema.parse(rawOptions ?? {});
       if (this.state.isPrivate && normalizeCode(code ?? '') !== this.state.code) {
-        throw new Error('Invalid lobby code');
+        throw new PlayerError('Invalid lobby code');
       }
       if (!canJoinLobby(this.lobbyContext(this.hostAccess), access, this.config)) {
-        throw new Error('You need to own this game to join this lobby');
+        throw new PlayerError('You need to own this game to join this lobby');
       }
     }
 

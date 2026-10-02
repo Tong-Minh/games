@@ -4,6 +4,7 @@
  */
 import { ColyseusTestServer } from '@colyseus/testing';
 import { LobbyMessage } from '@games/game-sdk';
+import { PlayerError } from '@games/game-sdk/server';
 import { monetizationSettingsSchema } from '@games/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { games } from '../src/games.gen';
@@ -21,7 +22,7 @@ beforeAll(async () => {
     services: {
       async authenticate(token) {
         const name = token?.split(':')[1];
-        if (!name) throw new Error('Not authenticated');
+        if (!name) throw new PlayerError('Not authenticated');
         return { id: `guest:${name}`, userId: null, name, avatarUrl: '' };
       },
       getMonetizationConfig: async () => ({

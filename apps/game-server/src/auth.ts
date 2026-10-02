@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { cleanText, type Identity } from '@games/game-sdk/server';
+import { cleanText, type Identity, PlayerError } from '@games/game-sdk/server';
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, SignJWT } from 'jose';
 import type { SupabaseApi } from './supabase';
 
@@ -25,7 +25,7 @@ export function createAuth(options: {
 
   async function issueGuestToken(rawName: string): Promise<{ token: string; name: string }> {
     const name = cleanText(rawName, guestNameSchemaLimits.max);
-    if (name.length < guestNameSchemaLimits.min) throw new Error('Name is too short');
+    if (name.length < guestNameSchemaLimits.min) throw new PlayerError('Name is too short');
     const token = await new SignJWT({ name })
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuer(GUEST_ISSUER)
@@ -37,37 +37,37 @@ export function createAuth(options: {
   }
 
   async function authenticate(token: string | undefined): Promise<Identity> {
-    if (!token) throw new Error('Not authenticated');
+    if (!token) throw new PlayerError('Not authenticated');
 
     let alg: string | undefined;
     try {
       alg = decodeProtectedHeader(token).alg;
     } catch {
-      throw new Error('Not authenticated');
+      throw new PlayerError('Not authenticated');
     }
 
     if (alg === 'HS256') {
       const { payload } = await jwtVerify(token, guestKey, { issuer: GUEST_ISSUER }).catch(() => {
-        throw new Error('Not authenticated');
+        throw new PlayerError('Not authenticated');
       });
       if (typeof payload.sub !== 'string' || typeof payload.name !== 'string') {
-        throw new Error('Not authenticated');
+        throw new PlayerError('Not authenticated');
       }
       return { id: payload.sub, userId: null, name: payload.name, avatarUrl: '' };
     }
 
     const { payload } = await jwtVerify(token, jwks, { issuer, audience: 'authenticated' }).catch(
       () => {
-        throw new Error('Not authenticated');
+        throw new PlayerError('Not authenticated');
       },
     );
     if (typeof payload.sub !== 'string' || payload.is_anonymous === true) {
-      throw new Error('Not authenticated');
+      throw new PlayerError('Not authenticated');
     }
     // The profile, not the token, is the source of truth for names, and its absence means
     // the account was deleted even if the token hasn't expired yet.
     const profile = await options.supabase.getProfile(payload.sub);
-    if (!profile) throw new Error('Account not found');
+    if (!profile) throw new PlayerError('Account not found');
     return {
       id: payload.sub,
       userId: payload.sub,

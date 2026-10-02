@@ -79,6 +79,20 @@ describe('lobby', () => {
     );
   });
 
+  it('hides internal errors from players', async () => {
+    const original = services.getMonetizationConfig;
+    services.getMonetizationConfig = async () => {
+      throw new Error('Supabase GET app_settings: 401 Invalid API key');
+    };
+    try {
+      const error = await join(colyseus, 'user:alice:Alice', {}).catch((e: Error) => e);
+      expect(String(error)).toMatch(/Something went wrong on our side/);
+      expect(String(error)).not.toMatch(/Supabase|API key/);
+    } finally {
+      services.getMonetizationConfig = original;
+    }
+  });
+
   it('rejects invalid settings on create and validates updates', async () => {
     await expect(
       join(colyseus, 'user:alice:Alice', { create: { settings: { target: 99 } } }),
