@@ -1,6 +1,6 @@
 # Fly.io config for the game server. Deploy from the repo root: `fly deploy`.
-# `app` is set by `fly launch`; rename it there if this name is taken.
-app = "game-night-server"
+# The Fly app this deploys to.
+app = "tongminh-server"
 primary_region = "iad"
 
 [build]
